@@ -6,7 +6,7 @@ A single :class:`WorkBuddyPlugin` (a real ``astrbot.api.star.Star``) exposes one
 non-admin user never triggers an upstream request and never receives a login
 link.
 
-The plugin owns one shared runtime: a ``aiohttp`` session, the encrypted
+The plugin owns one shared runtime: a ``aiohttp`` session, the local
 credential store, the OAuth manager, an ``UpstreamClient``, a ``ChatService``,
 a local OpenAI-compatible ``Gateway``, a ``SigninScheduler`` and a
 ``GrowthService``.  No AstrBot persona / agent / history / tool behaviour is
@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-
 import aiohttp
 
 from astrbot.api.star import Context, Star, StarTools, register
@@ -149,16 +147,7 @@ class WorkBuddyPlugin(Star):
             return
         self.data_dir = data_dir
 
-        env_name = settings["auth"]["master_key_env"]
-        master_key = os.environ.get(env_name)
-        if not master_key:
-            self._fail("未设置主密钥环境变量 {}，请配置后重载插件。".format(env_name))
-            return
-        try:
-            store = CredentialStore(data_dir, master_key)
-        except ValueError:
-            self._fail("主密钥无效：需为标准 base64 且解码后恰好 32 字节。")
-            return
+        store = CredentialStore(data_dir)
         try:
             state = StateStore(data_dir)
             state.load()  # a corrupted state file disables the plugin, never wiped
@@ -168,7 +157,7 @@ class WorkBuddyPlugin(Star):
         try:
             store.load()  # a corrupted credential file disables the plugin
         except ValueError:
-            self._fail("本地凭据无法解密，请检查主密钥或重新登录。")
+            self._fail("本地凭据文件损坏，请重新登录。")
             return
         self.store = store
         self.state = state
@@ -825,11 +814,8 @@ class WorkBuddyPlugin(Star):
             return
 
         if not self.ready:
-            # 显示已存储的固定安全原因（配置错误 / 文件损坏 / 缺 key 处理不同），
-            # 不把任何用户原始配置或 secret 回显给用户。
-            reason = self.error_reason or (
-                "请设置环境变量 {} 后重载插件。".format(self._master_key_env_name())
-            )
+            # 显示已存储的固定安全原因，不回显任何用户原始配置或 secret。
+            reason = self.error_reason or "请检查插件配置后重载。"
             yield event.plain_result("插件尚未就绪：" + reason)
             return
 
@@ -859,14 +845,6 @@ class WorkBuddyPlugin(Star):
             return
 
         yield event.plain_result(HELP_TEXT)
-
-    def _master_key_env_name(self) -> str:
-        if self._settings is not None:
-            return self._settings["auth"]["master_key_env"]
-        section = self._raw_config.get("auth") if hasattr(self._raw_config, "get") else None
-        if isinstance(section, dict) and isinstance(section.get("master_key_env"), str):
-            return section["master_key_env"]
-        return "WORKBUDDY_MASTER_KEY"
 
     # ------------------------------------------------------------------ #
     # login / logout

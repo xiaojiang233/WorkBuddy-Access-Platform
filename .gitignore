@@ -29,7 +29,7 @@ env/
 tmp/
 
 # 运行时机密 / 状态（绝不入库；也请勿在群聊或聊天中传播）
-credentials.enc
+credentials.json
 state.json
 .env
 .env.*

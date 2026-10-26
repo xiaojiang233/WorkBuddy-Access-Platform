@@ -58,7 +58,7 @@
 
 1. 在 AstrBot 中完成机器人平台连接；如需管理员 QQ 通知，请接好 QQ / OneBot v11（aiocqhttp）。
 2. 安装插件：从本仓库放入 `data/plugins/astrbot_plugin_workbuddy/`（`main.py` 等文件应直接位于该目录），或从[发布页](https://github.com/mydanyi/WorkBuddy-Access-Platform/releases/tag/v0.1.3)下载 ZIP 解压安装，然后在管理面板重载插件。
-3. 自行生成并设置主密钥 `WORKBUDDY_MASTER_KEY`（标准 base64、解码后恰好 32 字节），再设置网关密钥 `gateway.api_key`。主密钥环境变量需要对 AstrBot 进程生效，再保存插件配置并重载；生成与配置方法见[使用指南](docs/USAGE.md)。
+3. 设置网关密钥 `gateway.api_key`，再由管理员**私聊**执行 `/wb login` 完成授权；账号凭据会以 JSON 明文保存在插件数据目录，请确保该目录权限安全。
 4. 由管理员**私聊**执行 `/wb login` 取得链接，在**自己的浏览器**里完成授权。
 5. 在 AstrBot 中添加 OpenAI 兼容 Provider：API Base 同一容器内默认为 `http://127.0.0.1:17863/v1`，密钥填 `gateway.api_key`。
 6. 点「获取模型列表」并选择模型，再用 `/wb status` 检查登录、监听和积分状态。跨容器部署时，需要把 `gateway.host` 配成两端可互通的地址，细节见指南。
@@ -97,7 +97,7 @@
 - 这是**独立的非官方插件**，与腾讯没有任何背书关系，也不提供官方支持。
 - 上游模型清单、任务活动与配额可能随服务端变化，插件只能按观测到的协议实现，不保证长期可用。
 - 主备顺序调用只是本地选择策略，**不能**突破账号或 IP 级的限流与额度。
-- 凭据加密不替代主机权限保护；主密钥、`gateway.api_key` 与账号长期安全请按指南处理。
+- 凭据以明文保存，`gateway.api_key` 与账号长期安全请按指南处理，并确保插件数据目录不会被未授权用户读取。
 
 ## 致谢
 

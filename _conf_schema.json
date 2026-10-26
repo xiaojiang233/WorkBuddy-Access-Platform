@@ -232,14 +232,8 @@
   "auth": {
     "type": "object",
     "description": "登录与凭据",
-    "hint": "凭据以 AES 加密后保存在插件数据目录；主密钥仅从环境变量读取，不落盘、不入日志。",
+    "hint": "登录凭据以 JSON 明文保存在插件数据目录，请确保主机数据目录权限安全。",
     "items": {
-      "master_key_env": {
-        "type": "string",
-        "default": "WORKBUDDY_MASTER_KEY",
-        "description": "主密钥环境变量名",
-        "hint": "插件只读取该环境变量的值（标准 base64、解码后 32 字节），从不保存其内容。"
-      },
       "login_timeout": {
         "type": "int",
         "default": 120,

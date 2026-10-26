@@ -16,70 +16,30 @@
 
    > `<AstrBot 根目录>` 指包含 `data/` 的 AstrBot 运行根目录，不是 `data/` 本身。容器和主机上的路径可能不同，请以实际部署路径及 StarTools 返回的数据目录为准。
 
-2. 依赖由 AstrBot 的常规插件安装流程按 `requirements.txt` 处理（`aiohttp`、`cryptography` 两项，无新增依赖）。
+2. 依赖由 AstrBot 的常规插件安装流程按 `requirements.txt` 处理（`aiohttp`）。
 
 3. 在 AstrBot 管理面板**重载插件**。
 
 ---
 
-## 二、主密钥（WORKBUDDY_MASTER_KEY）
+## 二、本地凭据
 
-> **新用户须知**：使用本插件的用户必须**自行**生成并设置主密钥 `WORKBUDDY_MASTER_KEY`，并**自行**生成并设置网关的 API 访问密钥 `gateway.api_key`；账号登录授权也由用户**在自己的浏览器**里完成。请勿把账号 Token 当作网关 API Key 使用。
-
-凭据以 **AES-256-GCM** 加密保存到：
+账号凭据以 JSON **明文**保存到：
 
 ```
 <AstrBot 根目录>/data/plugin_data/astrbot_plugin_workbuddy/
-  credentials.enc    # 加密后的账号凭据
+  credentials.json   # 账号凭据（明文）
   state.json         # 非敏感的运行元数据（签到 / 成长进度等）
 ```
 
 > `<AstrBot 根目录>` 是包含 `data/` 的运行根目录；实际凭据位置以 `StarTools.get_data_dir("astrbot_plugin_workbuddy")` 返回值为准。
 
-- `credentials.enc` 的解密密钥来自环境变量 `WORKBUDDY_MASTER_KEY`（变量名本身可在配置里改）。
-- 该值必须是**标准 base64、解码后恰好 32 字节**。
+- 插件启动不需要额外的主密钥配置。
 - `state.json` 只放非敏感元数据，不含令牌明文。
-
-**用户自行生成密钥（占位符示例，绝非真实密钥）：**
-
-```bash
-# 在你自己的机器上运行，生成一次性随机主密钥
-python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
-```
-
-把输出设置到 AstrBot 进程 / 容器的环境变量（示例为占位符，请替换为你自己生成的值）：
-
-```bash
-export WORKBUDDY_MASTER_KEY="<把上面命令输出的 base64 粘贴到这里>"
-```
-
-Compose 片段（占位符）：
-
-```yaml
-services:
-  astrbot:
-    environment:
-      - WORKBUDDY_MASTER_KEY=<把你自己生成的 base64 粘到这里>
-```
-
-**注意：**
-
-- 请单独保存并备份该密钥；**不要把密钥或令牌发到群聊 / 聊天窗口**。
-- 未设置 `WORKBUDDY_MASTER_KEY`、密钥格式非法，或 `credentials.enc` 在原密钥下**解密失败**时，插件在 `initialize` 阶段就会进入**未就绪（ready=False）**并安全停用（不监听、不发请求）；此时 `/wb login` 等指令都会被就绪门控挡下，**无法**通过 `/wb login` 重新登录。
-
-**丢失或需要更换主密钥时的正确恢复步骤**（不要覆盖 / 删除原文件）：
-
-1. 在 AstrBot 管理面板**停用**本插件；
-2. **备份**现有的 `credentials.enc`，并把原文件**移动**到一个安全的备份位置（例如改名为 `credentials.enc.bak-<日期>`）。**不要覆盖、不要删除**原加密文件；`state.json` 不含令牌明文，可原样保留；
-3. 设置**新的**主密钥（标准 base64、解码后恰好 32 字节），写入 `WORKBUDDY_MASTER_KEY`（或你在配置里改用的变量名）；
-4. 在管理面板**重载**插件；
-5. 由管理员**私聊**执行 `/wb login` 重新完成一次授权，生成新的 `credentials.enc`。
-
-- **若只是 key 配错、而原 key 仍然在手**：先把环境变量**恢复为原主密钥**即可，无需移动或替换原凭据文件。
-- 直接更换密钥**不能**解密原文件（AES-GCM 无原密钥不可解），所以换 key 必须走上面的重新授权流程。
-- **停用 / 卸载插件不会自动删除**已保存的 `credentials.enc`、`state.json` 等数据；插件**没有**自动迁移逻辑，也**不存在**云端吊销——`/wb logout` 仅清除本地授权，不代表服务端令牌失效。
+- 请严格限制插件数据目录的文件权限，并不要把令牌发到群聊或聊天窗口。
+- 已有旧版加密凭据无法自动转换；请删除旧凭据文件后重新执行 `/wb login`。
+- **停用 / 卸载插件不会自动删除**已保存的 `credentials.json`、`state.json` 等数据；`/wb logout` 仅清除本地授权，不代表服务端令牌失效。
 - 插件配置面板中的 secret 项**仅掩码显示**；自建的 `gateway.api_key` 是一个**独立的高熵随机 token，不是 WorkBuddy 的 accessToken**。
-- 未设置 `WORKBUDDY_MASTER_KEY` 时，插件**安全地不启用**（不监听、不发请求）。
 - `gateway.api_key` 留空时，**不会监听**任何端口。
 
 ---
@@ -235,7 +195,6 @@ services:
 | `growth.auto_after_signin` / `auto_claim` | `false` / `true` |
 | `growth.max_chat_requests` / `max_retries` | `20` / `2` |
 | `growth.allow_telemetry` / `allow_theme_change` / `allow_adoption` | `true` / `false` / `false` |
-| `auth.master_key_env` | `WORKBUDDY_MASTER_KEY` |
 | `notifications.enabled` / `signin_success` / `errors` | `false` / `true` / `true` |
 | `notifications.admin_qq` / `platform_id` | `""` / `""` |
 | `notifications.error_cooldown_seconds` | `1800` |
@@ -264,7 +223,7 @@ services:
 
 - 非官方私人接口，可能随时变化；模型清单与任务活动随账号变化。
 - 存在频率限制与成本 / 额度消耗；自动化行为**可能与服务条款不符或触发账号风险**。请用最小频率并先手动验证，**不保证获得奖励**。
-- 凭据加密**不替代**主机权限保护。主密钥与加密文件应各自安全备份；`gateway.api_key` 能控制可消耗余额的权限，务必保密。
+- 凭据以明文保存，必须依靠主机权限保护；`gateway.api_key` 能控制可消耗余额的权限，务必保密。
 - 桌面事件只是**已实现链的 attempt**，并非完整客户端替身，需真实账号验证。
 - 提供商自身 / SDK 的重试可能产生额外调用，建议使用较低重试数；插件**不会**在 stream 已输出内容后自己重播。
 

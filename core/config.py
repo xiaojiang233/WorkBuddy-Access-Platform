@@ -336,9 +336,6 @@ def load_settings(raw) -> dict:
             ),
         },
         "auth": {
-            "master_key_env": _str(
-                auth.get("master_key_env"), "auth.master_key_env", "WORKBUDDY_MASTER_KEY"
-            ),
             "login_timeout": _int(
                 auth.get("login_timeout"), "auth.login_timeout", 120, 1
             ),

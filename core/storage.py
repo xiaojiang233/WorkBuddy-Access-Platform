@@ -1,55 +1,23 @@
 """Credential and state persistence for the WorkBuddy AstrBot plugin.
 
-``CredentialStore`` encrypts the whole credential dict with AES-256-GCM using a
-random 12-byte nonce and writes it atomically (same-directory temp file plus
-``os.replace``).  ``StateStore`` keeps a small JSON document that is updated one
-section at a time, also atomically.
-
-Security / error contract:
-
-* The master key must be standard base64 that decodes to exactly 32 bytes.
-  An invalid key raises ``ValueError`` *before* any file is written.
-* Every decryption or parse failure raises ``ValueError`` with a fixed message
-  that never contains credential data.
-* A failed atomic replace never removes the previously stored file.
+Credentials and state are stored as JSON and written atomically (same-directory
+temp file plus ``os.replace``).  File permissions are restricted to the owner,
+but credentials are intentionally not encrypted.
 """
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-_MAGIC = b"WBUD"
-_VERSION = b"\x01"
-_PREFIX = _MAGIC + _VERSION
-_NONCE_BYTES = 12
-_KEY_BYTES = 32
-
-_ERR_KEY = "credential master key must be base64 of exactly 32 bytes"
-_ERR_DECRYPT = "stored credentials could not be decrypted"
 _ERR_PARSE = "stored credentials could not be parsed"
 _ERR_STATE = "state file could not be parsed"
 
-_CREDENTIAL_FILENAME = "credentials.enc"
+_CREDENTIAL_FILENAME = "credentials.json"
 _STATE_FILENAME = "state.json"
-
-
-def _decode_master_key(master_key: str) -> bytes:
-    """Decode and validate a base64 master key (exactly 32 bytes)."""
-    try:
-        raw = base64.b64decode(master_key, validate=True)
-    except (binascii.Error, ValueError, TypeError):
-        raise ValueError(_ERR_KEY) from None
-    if len(raw) != _KEY_BYTES:
-        raise ValueError(_ERR_KEY)
-    return raw
 
 
 def _atomic_write(directory: Path, target: Path, blob: bytes, prefix: str) -> None:
@@ -80,13 +48,14 @@ def _atomic_write(directory: Path, target: Path, blob: bytes, prefix: str) -> No
 
 
 class CredentialStore:
-    """Encrypted, atomically written credential store."""
+    """Atomically written, unencrypted credential store."""
 
-    def __init__(self, data_dir: str | os.PathLike[str], master_key: str) -> None:
+    def __init__(
+        self,
+        data_dir: str | os.PathLike[str],
+        master_key: str | None = None,
+    ) -> None:
         self._dir = Path(data_dir)
-        # Validate the key before touching the filesystem.
-        self._key = _decode_master_key(master_key)
-        self._aad = _PREFIX
         self._path = self._dir / _CREDENTIAL_FILENAME
 
     @property
@@ -94,32 +63,21 @@ class CredentialStore:
         return self._path
 
     def save(self, credentials: dict) -> None:
-        """Encrypt and atomically persist ``credentials``."""
-        payload = json.dumps(
+        """Atomically persist ``credentials`` as JSON."""
+        blob = json.dumps(
             credentials, ensure_ascii=False, separators=(",", ":")
         ).encode("utf-8")
-        nonce = os.urandom(_NONCE_BYTES)
-        ciphertext = AESGCM(self._key).encrypt(nonce, payload, self._aad)
-        blob = _PREFIX + nonce + ciphertext
         _atomic_write(self._dir, self._path, blob, ".wb-cred-")
 
     def load(self) -> dict | None:
         """Return the stored credentials, or ``None`` if none are stored."""
         try:
-            raw = self._path.read_bytes()
+            raw = self._path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return None
-        if not raw.startswith(_PREFIX) or len(raw) < len(_PREFIX) + _NONCE_BYTES:
-            raise ValueError(_ERR_DECRYPT)
-        nonce = raw[len(_PREFIX):len(_PREFIX) + _NONCE_BYTES]
-        ciphertext = raw[len(_PREFIX) + _NONCE_BYTES:]
         try:
-            plaintext = AESGCM(self._key).decrypt(nonce, ciphertext, self._aad)
-        except Exception:
-            raise ValueError(_ERR_DECRYPT) from None
-        try:
-            obj = json.loads(plaintext.decode("utf-8"))
-        except Exception:
+            obj = json.loads(raw)
+        except (TypeError, ValueError):
             raise ValueError(_ERR_PARSE) from None
         if not isinstance(obj, dict):
             raise ValueError(_ERR_PARSE)
